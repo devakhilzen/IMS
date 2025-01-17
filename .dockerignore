@@ -1,0 +1,30 @@
+# Ignore Python cache files
+_pycache_/
+*.pyc
+*.pyo
+
+# Ignore virtual environments
+venv/
+env/
+
+# Ignore local environment files
+.env
+
+# Ignore Git repository data
+.git/
+.gitignore
+
+# Ignore Dockerfiles and Compose files if not needed in the image
+docker-compose.yml
+Dockerfile*
+
+
+
+# Ignore temporary files and logs
+*.log
+*.tmp
+*.bak
+
+# Ignore other unnecessary artifacts
+dist/
+build/
