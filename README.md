@@ -1,43 +1,25 @@
-##  Inventory Management System (IMS)
+##   Kubernetes Disaster Recovery System with Velero and CI/CD Pipeline
 
-The Inventory Management System (IMS) is a cloud-native application designed to manage inventory efficiently. It consists of a backend built with FastAPI, a frontend developed using Streamlit, and a MongoDB Atlas database. The application is containerized using Docker and deployed on Kubernetes clusters with disaster recovery capabilities.
+The Kubernetes Application Disaster Recovery System is designed to ensure high availability and fault tolerance for applications running on Kubernetes. This system automates backups, enables failover, and ensures that applications and their associated data can recover seamlessly during outages or disasters. The project involves using tools like Velero for backup/restore, Terraform for infrastructure provisioning, and CI/CD pipelines for automated testing and validation.
 
 ## Features
 
-Add, Update, and Delete Inventory Items
+- Automated deployment of Kubernetes resources.
+- Integration with **Velero** for disaster recovery.
+- Chaos testing with **Chaos Mesh** for simulating disaster scenarios.
+- Validation of application health after failover.
+- Environment-specific configurations using `envsubst`.
+- Multi-cluster failover setup.
 
-User Management
-
-Transaction Management
-
-Disaster Recovery using Velero
-
-High Availability with Multi-Cluster Setup
-
-
-## Architecture
-
-Frontend: Streamlit for a user-friendly interface.
-
-Backend: FastAPI for API endpoints.
-
-Database: MongoDB Atlas for inventory, user, and transaction data.
-
-Kubernetes: Deployment with primary and secondary clusters.
-
-Disaster Recovery: Velero for backup and restore functionality.
 
 ## Prerequisites
 
-Docker
-
-Kubernetes Cluster (Primary and Secondary)
-
-Velero
-
-Git
-
-MongoDB Atlas
+- [GitLab](https://about.gitlab.com/) for CI/CD.
+- [Google Cloud SDK](https://cloud.google.com/sdk) installed locally.
+- Kubernetes clusters (Primary and Secondary) set up in **GKE**.
+- Velero installed on both clusters.
+- Helm package manager.
+- A service account key for authentication (`AUTH_GITLAB` and `VELERO_AUTH`).
 
 ## CI/CD Pipeline
 
