@@ -1,0 +1,131 @@
+stages:
+  - Deploy the application
+  - Trigger Velero
+  - Simulating Disaster
+  - Validating application functionality
+
+deploy:
+  stage: Deploy the application
+  image: google/cloud-sdk:latest
+  before_script:
+    - echo "$AUTH_GITLAB" > /tmp/gitlab_key.json
+    - gcloud auth activate-service-account --key-file=/tmp/gitlab_key.json
+    - gcloud config set project $PROJECT_ID
+    - gcloud container clusters get-credentials $CLUSTER_NAME1 --zone $GKE_ZONE
+    - apt-get update && apt-get install -y gettext
+
+  script: |
+    if ! kubectl get secret artifact-registry-secret --namespace default > /dev/null 2>&1; then
+      echo "$ARTIFACT_KEY" > /tmp/artifact_key.json
+      kubectl create secret docker-registry artifact-registry-secret --docker-server=us-central1-docker.pkg.dev  --docker-username=_json_key  --docker-password="$(cat /tmp/artifact_key.json)"  --namespace default
+        
+    fi
+
+    kubectl get pv | grep -q 'pv-name' || kubectl apply -f K8s/pv.yml
+
+    for file in K8s/app-config.yml K8s/fastapi.yml K8s/streamlit.yml; do
+        envsubst < $file | kubectl apply -f -
+    done
+
+    if ! kubectl get ingress | grep -q 'ingress-name'; then
+        kubectl apply -f K8s/ingress.yml
+    fi
+
+  after_script:
+    - rm -f /tmp/gitlab_key.json 
+
+velero:
+  stage: Trigger Velero
+  image: google/cloud-sdk:latest
+  before_script:
+    - echo "$AUTH_GITLAB" > /tmp/gitlab_key.json
+    - gcloud auth activate-service-account --key-file=/tmp/gitlab_key.json
+    - gcloud config set project $PROJECT_ID
+    - gcloud container clusters get-credentials $CLUSTER_NAME1 --zone $GKE_ZONE
+    - curl -L https://github.com/vmware-tanzu/velero/releases/download/v1.11.0/velero-v1.11.0-linux-amd64.tar.gz -o /tmp/velero-linux.tar.gz
+    - tar -xvzf /tmp/velero-linux.tar.gz -C /tmp
+    - mv /tmp/velero-v1.11.0-linux-amd64/velero /usr/local/bin/
+    - rm -rf /tmp/velero-v1.11.0-linux-amd64 /tmp/velero-linux.tar.gz
+
+  script: |
+    echo "$VELERO_AUTH" > /tmp/velero_key.json
+
+    # Install Velero with adjusted resource requests
+    velero install  --provider gcp  --bucket $VELERO_BUCKET  --secret-file=/tmp/velero_key.json  --plugins velero/velero-plugin-for-gcp:v1.6.0   --use-volume-snapshots=false    --backup-location-config "region=$GKE_ZONE"  --velero-pod-cpu-request "100m"  --velero-pod-mem-request "64Mi"   --velero-pod-cpu-limit "200m"  --velero-pod-mem-limit "128Mi"
+
+    kubectl annotate pod --all backup.velero.io/backup-volumes=*
+    
+    if ! velero backup get | grep -q 'ims-backup'; then
+      velero backup create ims-backup --include-namespaces default   --include-resources persistentvolume,persistentvolumeclaim,configmap,secret,deployment,service   --wait
+    fi
+    echo "Backup completed successfully!"
+
+  after_script:
+    - rm -f /tmp/gitlab_key.json 
+
+Restore:
+  stage: Simulating Disaster
+  image: google/cloud-sdk:latest
+  before_script:
+    - echo "$AUTH_GITLAB" > /tmp/gitlab_key.json
+    - gcloud auth activate-service-account --key-file=/tmp/gitlab_key.json
+    - gcloud config set project $PROJECT_ID
+    - gcloud container clusters get-credentials $CLUSTER_NAME2 --zone $GKE_ZONE
+    - curl -L https://github.com/vmware-tanzu/velero/releases/download/v1.11.0/velero-v1.11.0-linux-amd64.tar.gz -o /tmp/velero-linux.tar.gz
+    - tar -xvzf /tmp/velero-linux.tar.gz -C /tmp
+    - mv /tmp/velero-v1.11.0-linux-amd64/velero /usr/local/bin/
+    - rm -rf /tmp/velero-v1.11.0-linux-amd64 /tmp/velero-linux.tar.gz 
+    - gcloud container clusters get-credentials $CLUSTER_NAME1 --zone $GKE_ZONE
+
+  script: |
+    echo "Simulating disaster by killing a pod..."
+    kubectl delete deployment fastapi -n default
+
+    echo "Checking for affected pods..."
+    AFFECTED_PODS=$(kubectl get pods -n default --no-headers | grep -v Running | wc -l)
+
+    if [ "$AFFECTED_PODS" -gt 0 ]; then
+      echo "Simulating disaster recovery..."
+      gcloud container clusters get-credentials $CLUSTER_NAME2 --zone $GKE_ZONE
+
+      BACKUP_NAME="ims-backup"
+      BACKUP_EXISTS=$(velero backup get | grep -w $BACKUP_NAME)
+
+      if [ -z "$BACKUP_EXISTS" ]; then
+        echo "Error: Backup '$BACKUP_NAME' not found. Exiting..."
+        exit 1
+      fi
+
+      velero restore create --from-backup $BACKUP_NAME
+    else
+      echo "No disaster detected. Exiting..."
+      exit 1
+    fi
+
+
+Validation:
+  stage: Validating application functionality
+  image: google/cloud-sdk:latest
+  before_script:
+    - echo "$AUTH_GITLAB" > /tmp/gitlab_key.json
+    - gcloud auth activate-service-account --key-file=/tmp/gitlab_key.json
+    - gcloud config set project $PROJECT_ID
+    - gcloud container clusters get-credentials $CLUSTER_NAME2 --zone $GKE_ZONE
+
+  script: |
+    RUNNING_PODS=$(kubectl get pods -n default --no-headers | grep Running | wc -l)
+    TOTAL_PODS=$(kubectl get pods -n default --no-headers | wc -l)
+    if [ "$RUNNING_PODS" -ne "$TOTAL_PODS" ]; then
+        kubectl get pods -n default
+        exit 1
+    fi
+
+    RESPONSE=$(curl -k -o /dev/null -s -w "%{http_code}" $EXTERNAL_IP)
+    if [ "$RESPONSE" -eq 200 ]; then
+        echo "Application is running successfully!"
+    else
+        exit 1
+    fi
+
+  after_script:
+    - rm -f /tmp/gitlab_key.json
