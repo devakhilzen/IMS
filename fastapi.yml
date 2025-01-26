@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi
+  template:
+    metadata:
+      labels:
+        app: fastapi
+    spec:
+      imagePullSecrets:
+      - name: artifact-registry-secret
+      containers:
+      - name: fastapi
+        image: $FASTAPI_IMAGE
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: app-config
+        volumeMounts:
+        - name: fastapi-storage          
+          mountPath: "/app/data"         
+      volumes:
+      - name: fastapi-storage            
+        persistentVolumeClaim:
+          claimName: fastapi-pvc         
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+  selector:
+    app: fastapi

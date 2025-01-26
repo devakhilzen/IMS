@@ -1,0 +1,12 @@
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  MONGO_URI: "$MONGO_URI"
+  MONGO_DB_NAME: "inventory"
+  MONGO_COLLECTION_NAME: "items"
+  MONGO_COLLECTION_NAME_TWO: "users"
+  MONGO_COLLECTION_NAME_THREE: "transactions"
+  BASE_URL: "$BASE_URL"
